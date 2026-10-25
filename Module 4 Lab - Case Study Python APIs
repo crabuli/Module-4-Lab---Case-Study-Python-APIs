@@ -1,0 +1,83 @@
+import sqlite3
+from flask import Flask, jsonify, request
+
+app = Flask(__name__)
+
+
+def dict_factory(cursor, row):
+  d = {}
+  for idx, col in enumerate(cursor.description):
+    d[col[0]] = row[idx]
+  return d
+
+
+def init_db():
+  conn = sqlite3.connect('books.db')
+  cursor = conn.cursor()
+  cursor.execute(
+      'CREATE TABLE IF NOT EXISTS books (title TEXT, author TEXT, year INTEGER)'
+  )
+  cursor.execute('SELECT COUNT(*) FROM books')
+  if cursor.fetchone()[0] == 0:
+    sample_books = [
+        ('The Weirdstone of Brisingamen', 'Alan Garner', 1960),
+        ('Perdido Street Station', 'China Miéville', 2000),
+        ('Thud!', 'Terry Pratchett', 2005),
+        ('The Spellman Files', 'Lisa Lutz', 2007),
+        ('Small Gods', 'Terry Pratchett', 1992),
+    ]
+    cursor.executemany(
+        'INSERT INTO books (title, author, year) VALUES (?, ?, ?)', sample_books
+    )
+    conn.commit()
+  conn.close()
+
+
+init_db()
+
+
+@app.route('/books', methods=['GET'])
+def get_books():
+  conn = sqlite3.connect('books.db')
+  conn.row_factory = dict_factory
+  cursor = conn.cursor()
+  cursor.execute('SELECT rowid as id, * FROM books')
+  books = cursor.fetchall()
+  conn.close()
+  return jsonify(books)
+
+
+@app.route('/books/<int:id>', methods=['GET'])
+def get_book(id):
+  conn = sqlite3.connect('books.db')
+  conn.row_factory = dict_factory
+  cursor = conn.cursor()
+  cursor.execute('SELECT rowid as id, * FROM books WHERE rowid = ?', (id,))
+  book = cursor.fetchone()
+  conn.close()
+  if book:
+    return jsonify(book)
+  return jsonify({'error': 'Book not found'}), 404
+
+
+@app.route('/books', methods=['POST'])
+def add_book():
+  data = request.get_json()
+  title = data.get('title')
+  author = data.get('author')
+  year = data.get('year')
+
+  conn = sqlite3.connect('books.db')
+  cursor = conn.cursor()
+  cursor.execute(
+      'INSERT INTO books (title, author, year) VALUES (?, ?, ?)',
+      (title, author, year),
+  )
+  conn.commit()
+  conn.close()
+
+  return jsonify({'message': 'Book added successfully', 'title': title}), 201
+
+
+if __name__ == '__main__':
+  app.run(debug=True)
